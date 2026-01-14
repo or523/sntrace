@@ -1,0 +1,12 @@
+# Object files
+*.o
+
+# Binaries
+sntrace
+dummy_prog
+
+# Logs
+trace.log
+
+# Temporary files
+*.bak
