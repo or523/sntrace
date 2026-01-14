@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include "syscall_table.h"
 #include <stddef.h>
+#include <stdio.h>
 #include <sys/syscall.h>
 
 // Helper macros to define syscalls easily
