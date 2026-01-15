@@ -13,10 +13,12 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/prctl.h>
+#include <sys/signalfd.h>
 #include <sys/socket.h>
 #include <sys/syscall.h>
 #include <sys/uio.h>
 #include <sys/un.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "arg_printers.h"
@@ -65,7 +67,7 @@ struct seccomp_notif_resp {
 #define SECCOMP_IOCTL_NOTIF_SEND_RESP SECCOMP_IOCTL_NOTIF_SEND
 #endif
 
-static void tracer_loop(int notify_fd, int pidfd, pid_t pid) {
+static void tracer_loop(int notify_fd, int sigfd) {
   struct seccomp_notif req;
   struct seccomp_notif_resp resp;
   struct seccomp_data *data = &req.data;
@@ -78,10 +80,10 @@ static void tracer_loop(int notify_fd, int pidfd, pid_t pid) {
 
     pfds[0].fd = notify_fd;
     pfds[0].events = POLLIN;
-    pfds[1].fd = pidfd;
+    pfds[1].fd = sigfd;
     pfds[1].events = POLLIN;
 
-    // Wait for notification or child exit
+    // Wait for notification or signal
     if (poll(pfds, 2, -1) < 0) {
       if (errno == EINTR)
         continue;
@@ -90,7 +92,42 @@ static void tracer_loop(int notify_fd, int pidfd, pid_t pid) {
     }
 
     if (pfds[1].revents & POLLIN) {
-      // Child exited
+      // SIGCHLD received
+      struct signalfd_siginfo fdsi;
+      ssize_t s = read(sigfd, &fdsi, sizeof(struct signalfd_siginfo));
+      if (s != sizeof(struct signalfd_siginfo)) {
+        perror("read signalfd");
+        break;
+      }
+
+      // Reap all dead children
+      while (1) {
+        int status;
+        pid_t p = waitpid(-1, &status, WNOHANG);
+        if (p == 0) {
+          // No more dead children
+          break;
+        } else if (p < 0) {
+          if (errno == ECHILD) {
+            // No more children at all
+            printf("sntrace: All children exited.\n");
+            return;
+          }
+          break;
+        } else {
+          // Child p acted
+          if (WIFEXITED(status)) {
+            printf("[%d] exited with status %d\n", p, WEXITSTATUS(status));
+          } else if (WIFSIGNALED(status)) {
+            printf("[%d] killed by signal %d\n", p, WTERMSIG(status));
+          }
+        }
+      }
+    }
+
+    if (pfds[0].revents & (POLLHUP | POLLERR)) {
+      // All tracees have exited (the listener FD is closed by kernel)
+      printf("sntrace: All tracees exited.\n");
       break;
     }
 
@@ -107,7 +144,7 @@ static void tracer_loop(int notify_fd, int pidfd, pid_t pid) {
 
     const syscall_info_t *info = get_syscall_info(data->nr);
     if (info) {
-      printf("%s(", info->name);
+      printf("[%u] %s(", req.pid, info->name);
       for (int i = 0; i < info->num_args; i++) {
         if (i > 0)
           printf(", ");
@@ -123,10 +160,10 @@ static void tracer_loop(int notify_fd, int pidfd, pid_t pid) {
           print_arg_ptr(val);
           break;
         case ARG_STRING:
-          print_arg_string(pid, val);
+          print_arg_string(req.pid, val);
           break;
         case ARG_FD:
-          print_arg_fd(pid, (int)val);
+          print_arg_fd(req.pid, (int)val);
           break;
         case ARG_BUFFER: {
           int len_idx = info->args[i].type_id;
@@ -143,7 +180,7 @@ static void tracer_loop(int notify_fd, int pidfd, pid_t pid) {
             if (buf_len < 0)
               buf_len = 0;
           }
-          print_arg_buffer(pid, val, buf_len);
+          print_arg_buffer(req.pid, val, buf_len);
           break;
         }
         case ARG_BITMASK:
@@ -159,9 +196,9 @@ static void tracer_loop(int notify_fd, int pidfd, pid_t pid) {
       // Fallback for unknown syscalls
       const char *name = syscall_name(data->nr);
       if (name) {
-        printf("Syscall: %s (", name);
+        printf("[%u] Syscall: %s (", req.pid, name);
       } else {
-        printf("Syscall: %d (", data->nr);
+        printf("[%u] Syscall: %d (", req.pid, data->nr);
       }
       // Print raw hex args
       for (int i = 0; i < 6; i++) {
@@ -230,7 +267,6 @@ static int find_seccomp_listener(pid_t pid) {
     ssize_t len = readlink(path, link_dest, sizeof(link_dest) - 1);
     if (len != -1) {
       link_dest[len] = '\0';
-      // fprintf(stderr, "Debug: Scanning %s -> %s\n", path, link_dest);
       if (strstr(link_dest, "anon_inode:seccomp notify") != NULL ||
           strstr(link_dest, "anon_inode:[seccomp]") != NULL) {
 
@@ -288,6 +324,11 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  if (prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) < 0) {
+    perror("prctl(PR_SET_CHILD_SUBREAPER)");
+    return 1;
+  }
+
   pid_t pid = fork();
   if (pid < 0) {
     perror("fork");
@@ -311,6 +352,22 @@ int main(int argc, char *argv[]) {
     exit(1);
   } else {
     // Parent
+
+    // Block SIGCHLD and setup signalfd
+    sigset_t mask;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGCHLD);
+    if (sigprocmask(SIG_BLOCK, &mask, NULL) == -1) {
+      perror("sigprocmask");
+      return 1;
+    }
+
+    int sigfd = signalfd(-1, &mask, 0);
+    if (sigfd < 0) {
+      perror("signalfd");
+      return 1;
+    }
+
     int pidfd = syscall(__NR_pidfd_open, pid, 0);
     if (pidfd < 0) {
       perror("pidfd_open");
@@ -337,9 +394,13 @@ int main(int argc, char *argv[]) {
     }
 
     printf("sntrace: tracing %s (pid %d)...\n", argv[1], pid);
-    tracer_loop(notify_fd, pidfd, pid);
-    close(notify_fd);
+
+    // We don't need the pidfd anymore for the loop, we use POLLHUP on notify_fd
     close(pidfd);
+
+    tracer_loop(notify_fd, sigfd);
+    close(notify_fd);
+    close(sigfd);
   }
 
   return 0;
