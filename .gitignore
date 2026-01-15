@@ -10,3 +10,10 @@ trace.log
 
 # Temporary files
 *.bak
+
+# Test binaries
+fork_prog
+multi_thread_prog
+tests/dummy_prog
+tests/fork_prog
+tests/multi_thread_prog
