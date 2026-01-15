@@ -3,8 +3,9 @@ CFLAGS = -Wall -g
 TARGET = sntrace
 
 
-all: $(TARGET) dummy_prog multi_thread_prog fork_prog
+.PHONY: tests all clean
 
+all: $(TARGET)
 
 OBJS = sntrace.o syscalls.o remote_mem.o arg_printers.o syscall_table.o constants.o
 
@@ -29,16 +30,10 @@ syscall_table.o: syscall_table.c syscall_table.h constants.h
 constants.o: constants.c constants.h
 	$(CC) $(CFLAGS) -c constants.c
 
-
-dummy_prog: dummy_prog.c
-	$(CC) $(CFLAGS) -o dummy_prog dummy_prog.c
-
-multi_thread_prog: multi_thread_prog.c
-	$(CC) $(CFLAGS) -pthread -o multi_thread_prog multi_thread_prog.c
-
-fork_prog: fork_prog.c
-	$(CC) $(CFLAGS) -o fork_prog fork_prog.c
+tests:
+	$(MAKE) -C tests
 
 clean:
-	rm -f $(TARGET) dummy_prog multi_thread_prog fork_prog
+	rm -f $(TARGET)
+	$(MAKE) -C tests clean
 
