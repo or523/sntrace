@@ -800,6 +800,10 @@ static const syscall_info_t known_syscalls[] = {
 #ifdef __NR_mq_getsetattr
     SC_3(__NR_mq_getsetattr, mq_getsetattr, A_INT, A_PTR, A_PTR),
 #endif
+#ifndef __NR_clone3
+#define __NR_clone3 435
+#endif
+    SC_2(__NR_clone3, clone3, A_PTR, A_INT),
 #ifdef __NR_rseq
     SC_4(__NR_rseq, rseq, A_PTR, A_INT, A_INT, A_INT),
 #endif
