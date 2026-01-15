@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "syscall_table.h"
+#include "constants.h"
 #include <stddef.h>
 #include <stdio.h>
 #include <sys/syscall.h>
@@ -357,7 +358,7 @@ static const syscall_info_t known_syscalls[] = {
     SC_1(__NR_times, times, A_PTR),
 #endif
 #ifdef __NR_ptrace
-    SC_4(__NR_ptrace, ptrace, A_INT, A_INT, A_PTR, A_PTR),
+    SC_4(__NR_ptrace, ptrace, A_ENM(TYPE_PTRACE_REQUEST), A_INT, A_PTR, A_PTR),
 #endif
 #ifdef __NR_getuid
     SC_0(__NR_getuid, getuid),

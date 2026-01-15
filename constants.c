@@ -6,9 +6,11 @@
 #include <sched.h>
 #include <stdio.h>
 #include <sys/mman.h>
+#include <sys/ptrace.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
 
 typedef struct {
   unsigned long long val;
@@ -133,6 +135,33 @@ static const value_name_t clone_flags[] = {
     {CLONE_NEWPID, "CLONE_NEWPID"},
     {CLONE_NEWNET, "CLONE_NEWNET"},
     {CLONE_IO, "CLONE_IO"},
+    {CLONE_IO, "CLONE_IO"},
+    {0, NULL}};
+
+static const value_name_t ptrace_requests[] = {
+    {PTRACE_TRACEME, "PTRACE_TRACEME"},
+    {PTRACE_PEEKTEXT, "PTRACE_PEEKTEXT"},
+    {PTRACE_PEEKDATA, "PTRACE_PEEKDATA"},
+    {PTRACE_PEEKUSER, "PTRACE_PEEKUSER"},
+    {PTRACE_POKETEXT, "PTRACE_POKETEXT"},
+    {PTRACE_POKEDATA, "PTRACE_POKEDATA"},
+    {PTRACE_POKEUSER, "PTRACE_POKEUSER"},
+    {PTRACE_CONT, "PTRACE_CONT"},
+    {PTRACE_KILL, "PTRACE_KILL"},
+    {PTRACE_SINGLESTEP, "PTRACE_SINGLESTEP"},
+    {PTRACE_GETREGS, "PTRACE_GETREGS"},
+    {PTRACE_SETREGS, "PTRACE_SETREGS"},
+    {PTRACE_GETFPREGS, "PTRACE_GETFPREGS"},
+    {PTRACE_SETFPREGS, "PTRACE_SETFPREGS"},
+    {PTRACE_ATTACH, "PTRACE_ATTACH"},
+    {PTRACE_DETACH, "PTRACE_DETACH"},
+    {PTRACE_GETFPXREGS, "PTRACE_GETFPXREGS"},
+    {PTRACE_SETFPXREGS, "PTRACE_SETFPXREGS"},
+    {PTRACE_SYSCALL, "PTRACE_SYSCALL"},
+    {PTRACE_SETOPTIONS, "PTRACE_SETOPTIONS"},
+    {PTRACE_GETEVENTMSG, "PTRACE_GETEVENTMSG"},
+    {PTRACE_GETSIGINFO, "PTRACE_GETSIGINFO"},
+    {PTRACE_SETSIGINFO, "PTRACE_SETSIGINFO"},
     {0, NULL}};
 
 static const value_name_t *get_table(int type_id) {
@@ -165,6 +194,8 @@ static const value_name_t *get_table(int type_id) {
     return poll_events;
   case TYPE_CLONE_FLAGS:
     return clone_flags;
+  case TYPE_PTRACE_REQUEST:
+    return ptrace_requests;
   default:
     return NULL;
   }

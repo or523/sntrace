@@ -2,7 +2,7 @@
 #define CONSTANTS_H
 
 // Type IDs for flag sets
-enum {
+enum arg_type_t {
   TYPE_NONE = 0,
   TYPE_OPEN_FLAGS,    // O_RDONLY, O_CREAT...
   TYPE_ACCESS_MODE,   // R_OK, W_OK...
@@ -19,6 +19,7 @@ enum {
   TYPE_FCNTL_CMD,
   TYPE_IOCTL_REQ, // Hard to map all, but maybe some?
   TYPE_POLL_EVENTS,
+  TYPE_PTRACE_REQUEST
 };
 
 void print_bitmask(int type_id, unsigned long long val);
