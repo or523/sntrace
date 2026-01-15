@@ -17,3 +17,5 @@ multi_thread_prog
 tests/dummy_prog
 tests/fork_prog
 tests/multi_thread_prog
+ptrace_prog
+tests/ptrace_prog
