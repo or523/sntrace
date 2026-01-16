@@ -318,9 +318,39 @@ static int install_syscall_filter(void) {
   return listener;
 }
 
+static void print_usage(const char *prog_name) {
+  fprintf(stderr, "Usage: %s [options] <command> [args...]\n", prog_name);
+  fprintf(stderr, "Options:\n");
+  fprintf(stderr,
+          "  -o <file>   Write trace output to <file> instead of stdout\n");
+  fprintf(stderr, "  -h, --help  Show this help message\n");
+}
+
 int main(int argc, char *argv[]) {
-  if (argc < 2) {
-    fprintf(stderr, "Usage: %s <command> [args...]\n", argv[0]);
+  char *output_file = NULL;
+  int command_idx = 1;
+
+  // Parse arguments
+  while (command_idx < argc) {
+    if (strcmp(argv[command_idx], "-h") == 0 ||
+        strcmp(argv[command_idx], "--help") == 0) {
+      print_usage(argv[0]);
+      return 0;
+    } else if (strcmp(argv[command_idx], "-o") == 0) {
+      if (command_idx + 1 >= argc) {
+        fprintf(stderr, "Error: -o requires a file path\n");
+        return 1;
+      }
+      output_file = argv[command_idx + 1];
+      command_idx += 2;
+    } else {
+      // Found the command
+      break;
+    }
+  }
+
+  if (command_idx >= argc) {
+    print_usage(argv[0]);
     return 1;
   }
 
@@ -347,11 +377,28 @@ int main(int argc, char *argv[]) {
     // The parent must attach and handle notifications.
     // If the parent isn't ready, we block here.
 
-    execvp(argv[1], &argv[1]);
+    execvp(argv[command_idx], &argv[command_idx]);
     perror("execvp");
     exit(1);
   } else {
     // Parent
+
+    // Handle output redirection in parent only
+    if (output_file) {
+      int out_fd = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+      if (out_fd < 0) {
+        perror("open output file");
+        kill(pid, SIGKILL);
+        return 1;
+      }
+      if (dup2(out_fd, STDOUT_FILENO) < 0) {
+        perror("dup2");
+        close(out_fd);
+        kill(pid, SIGKILL);
+        return 1;
+      }
+      close(out_fd);
+    }
 
     // Block SIGCHLD and setup signalfd
     sigset_t mask;
@@ -393,7 +440,7 @@ int main(int argc, char *argv[]) {
       return 1;
     }
 
-    printf("sntrace: tracing %s (pid %d)...\n", argv[1], pid);
+    printf("sntrace: tracing %s (pid %d)...\n", argv[command_idx], pid);
 
     // We don't need the pidfd anymore for the loop, we use POLLHUP on notify_fd
     close(pidfd);
